@@ -1,111 +1,117 @@
 const express = require('express');
-const ytdl = require('@distube/ytdl-core');
+const ytdl = require('@distube/ytdl-core'); // Updated stable module
+const cors = require('cors');
 const app = express();
-const PORT = 3000;
 
-app.use(express.json());
+app.use(cors());
 
-// --- Frontend HTML & Logic ---
-const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Protube Downloader</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f4f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 500px; text-align: center; }
-        h1 { color: #ff0000; margin-bottom: 1.5rem; }
-        input { width: 100%; padding: 12px; margin-bottom: 1rem; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-        button { background: #ff0000; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; }
-        button:hover { background: #cc0000; }
-        #result { margin-top: 1.5rem; text-align: left; display: none; }
-        .video-card { border: 1px solid #eee; padding: 10px; border-radius: 8px; }
-        img { width: 100%; border-radius: 6px; }
-        .download-btn { display: block; background: #28a745; color: white; text-align: center; text-decoration: none; padding: 10px; margin-top: 10px; border-radius: 4px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Protube Downloader</h1>
-        <input type="text" id="videoUrl" placeholder="Paste YouTube URL here...">
-        <button onclick="fetchVideo()">Get Download Link</button>
-        
-        <div id="result">
-            <div class="video-card" id="videoDetails">
-                </div>
-        </div>
-    </div>
-
-    <script>
-        async function fetchVideo() {
-            const url = document.getElementById('videoUrl').value;
-            const resultDiv = document.getElementById('result');
-            const detailsDiv = document.getElementById('videoDetails');
-            
-            if(!url) return alert('Bhai, URL toh daalo!');
-            
-            detailsDiv.innerHTML = 'Fetching details...';
-            resultDiv.style.display = 'block';
-
-            try {
-                const response = await fetch(\`/download?url=\${encodeURIComponent(url)}\`);
-                const data = await response.json();
-
-                if(data.success) {
-                    detailsDiv.innerHTML = \`
-                        <img src="\${data.thumbnail}" alt="thumbnail">
-                        <h3>\${data.title}</h3>
-                        <p>Duration: \${data.duration}s</p>
-                        <a href="\${data.downloadUrl}" class="download-btn" target="_blank">Download Video (High Quality)</a>
-                    \`;
-                } else {
-                    detailsDiv.innerHTML = '<p style="color:red">Error: ' + data.error + '</p>';
-                }
-            } catch (err) {
-                detailsDiv.innerHTML = '<p style="color:red">Server error. Try again.</p>';
-            }
-        }
-    </script>
-</body>
-</html>
-`;
-
-// --- API Implementation ---
-
-// Serve the Frontend
+// Frontend Interface
 app.get('/', (req, res) => {
-    res.send(htmlContent);
+    res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>PowerDownloader - YT Video Downloader</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+            body { font-family: 'Inter', sans-serif; background: #0f172a; color: white; }
+        </style>
+    </head>
+    <body class="flex flex-col items-center justify-center min-h-screen p-4">
+        <div class="max-w-2xl w-full bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
+            <h1 class="text-3xl font-bold text-center mb-6 text-blue-400">YouTube Video Downloader</h1>
+            
+            <div class="flex flex-col gap-4">
+                <input type="text" id="url" placeholder="Paste YouTube Link Here..." 
+                    class="w-full p-4 rounded-lg bg-slate-900 border border-slate-600 focus:outline-none focus:border-blue-500 transition text-white">
+                
+                <button onclick="downloadVideo()" id="btn"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition transform active:scale-95">
+                    Download Video (MP4)
+                </button>
+            </div>
+
+            <div id="status" class="mt-6 text-center hidden">
+                <div class="animate-spin inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mb-2"></div>
+                <p id="status-text">Connecting to server...</p>
+            </div>
+        </div>
+
+        <script>
+            function downloadVideo() {
+                const url = document.getElementById('url').value;
+                const btn = document.getElementById('btn');
+                const status = document.getElementById('status');
+
+                if(!url || !url.includes('youtube.com') && !url.includes('youtu.be')) {
+                    return alert('Please paste a valid YouTube URL');
+                }
+
+                status.classList.remove('hidden');
+                btn.disabled = true;
+                btn.classList.add('opacity-50');
+
+                // Redirecting to the backend download route
+                window.location.href = \`/download?url=\${encodeURIComponent(url)}\`;
+
+                // Reset button after 10 seconds (enough time for download to start)
+                setTimeout(() => {
+                    status.classList.add('hidden');
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50');
+                }, 10000);
+            }
+        </script>
+    </body>
+    </html>
+    `);
 });
 
-// API Endpoint to fetch video link
+// Download Logic
 app.get('/download', async (req, res) => {
-    const videoURL = req.query.url;
-
-    if (!videoURL || !ytdl.validateURL(videoURL)) {
-        return res.status(400).json({ success: false, error: 'Invalid YouTube URL' });
-    }
-
     try {
+        const videoURL = req.query.url;
+
+        if (!ytdl.validateURL(videoURL)) {
+            return res.status(400).send('Invalid YouTube URL');
+        }
+
+        // Fetch video info
         const info = await ytdl.getInfo(videoURL);
         
-        // Filter for formats that have both video and audio
-        const format = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
+        // Clean title for filename (remove special characters)
+        const title = info.videoDetails.title.replace(/[^\w\s]/gi, '') || 'video';
 
-        res.json({
-            success: true,
-            title: info.videoDetails.title,
-            thumbnail: info.videoDetails.thumbnails[0].url,
-            duration: info.videoDetails.lengthSeconds,
-            downloadUrl: format.url // This is the direct link to the video file
-        });
+        // Set headers for file download
+        res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
+        res.header('Content-Type', 'video/mp4');
+
+        // Stream the video
+        // Note: 'highest' handles both audio and video for 720p and below
+        ytdl(videoURL, {
+            quality: 'highest',
+            filter: 'audioandvideo'
+        })
+        .on('error', (err) => {
+            console.error('Stream Error:', err);
+            if (!res.headersSent) {
+                res.status(500).send('Error during streaming');
+            }
+        })
+        .pipe(res);
+
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, error: 'Failed to fetch video. YouTube might be blocking the request.' });
+        console.error('Server Error:', err);
+        res.status(500).send('Server Error: ' + err.message);
     }
 });
 
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Protube Downloader running at http://localhost:${PORT}`);
+    console.log(`\n🚀 Server is flying at http://localhost:${PORT}`);
+    console.log(`Press Ctrl+C to stop\n`);
 });
+
